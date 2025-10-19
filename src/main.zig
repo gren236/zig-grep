@@ -1,13 +1,5 @@
 const std = @import("std");
-var stdin = std.fs.File.stdin().readerStreaming(&.{});
-
-fn matchPattern(input_line: []const u8, pattern: []const u8) bool {
-    if (pattern.len == 1) {
-        return std.mem.indexOf(u8, input_line, pattern) != null;
-    } else {
-        @panic("Unhandled pattern");
-    }
-}
+const matcher = @import("matcher.zig");
 
 pub fn main() !void {
     var buffer: [1024]u8 = undefined;
@@ -22,17 +14,17 @@ pub fn main() !void {
         std.process.exit(1);
     }
 
-    // You can use print statements as follows for debugging, they'll be visible when running tests.
-    std.debug.print("Logs from your program will appear here!\n", .{});
-
-    // Uncomment this block to pass the first stage
-    //
-    var input_buffer: [1024]u8 = undefined;
-    const input_len = try stdin.read(&input_buffer);
-    const input_slice = input_buffer[0..input_len];
-
     const pattern = args[2];
-    if (matchPattern(input_slice, pattern)) {
+    var input_matcher = matcher.init(pattern);
+
+    var input_buffer: [128]u8 = undefined;
+    var input_stdin_reader = std.fs.File.stdin().reader(&input_buffer);
+    const input_reader = &input_stdin_reader.interface;
+    const input_slice = try input_reader.takeDelimiterExclusive('\n');
+
+    // std.debug.print("input bytes read: {s}\n", .{input_slice});
+
+    if (input_matcher.match(input_slice)) {
         std.process.exit(0);
     } else {
         std.process.exit(1);
