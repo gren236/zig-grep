@@ -4,11 +4,16 @@ const Self = @This();
 
 const Class = union(enum) {
     decimal: DecimalClass,
+    word: WordClass,
     literal: LiteralClass,
 
     fn getFromString(str: []const u8) Class {
         if (std.mem.eql(u8, str, "\\d")) {
             return .{ .decimal = DecimalClass{} };
+        }
+
+        if (std.mem.eql(u8, str, "\\w")) {
+            return .{ .word = WordClass{} };
         }
 
         return .{ .literal = LiteralClass.init(str[0]) };
@@ -35,6 +40,22 @@ test DecimalClass {
     var class = DecimalClass{};
     try std.testing.expect(class.match('6'));
     try std.testing.expect(!class.match('j'));
+}
+
+const WordClass = struct {
+    fn match(_: WordClass, char: u8) bool {
+        if ((char >= 'A' and char <= 'Z') or (char >= 'a' and char <= 'z') or (char >= '0' and char <= '9') or char == '_') {
+            return true;
+        }
+
+        return false;
+    }
+};
+
+test WordClass {
+    var class = WordClass{};
+    try std.testing.expect(class.match('R'));
+    try std.testing.expect(!class.match('+'));
 }
 
 const LiteralClass = struct {
@@ -85,4 +106,8 @@ test match {
     matcher_obj = Self.init("\\d");
     try std.testing.expect(matcher_obj.match("full3jar"));
     try std.testing.expect(!matcher_obj.match("hello"));
+
+    matcher_obj = Self.init("\\w");
+    try std.testing.expect(matcher_obj.match("---hello---"));
+    try std.testing.expect(!matcher_obj.match("-+^^^$"));
 }
