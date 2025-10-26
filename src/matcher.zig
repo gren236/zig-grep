@@ -2,21 +2,43 @@ const std = @import("std");
 
 const Self = @This();
 
+pub const MatcherError = error{
+    MalformedClass,
+    UnsupportedClass,
+};
+
 const Class = union(enum) {
     decimal: DecimalClass,
     word: WordClass,
+    positive_group: PositiveGroupClass,
     literal: LiteralClass,
 
-    fn getFromString(str: []const u8) Class {
-        if (std.mem.eql(u8, str, "\\d")) {
-            return .{ .decimal = DecimalClass{} };
+    fn getFromString(str: []const u8) !Class {
+        if (str.len < 1) {
+            return MatcherError.MalformedClass;
         }
 
-        if (std.mem.eql(u8, str, "\\w")) {
-            return .{ .word = WordClass{} };
+        switch (str[0]) {
+            '\\' => {
+                if (str.len < 2) {
+                    return MatcherError.MalformedClass;
+                }
+
+                switch (str[1]) {
+                    'd' => return .{ .decimal = DecimalClass{} },
+                    'w' => return .{ .word = WordClass{} },
+                    else => return MatcherError.UnsupportedClass,
+                }
+            },
+            '[' => {
+                const group_end = std.mem.indexOfScalar(u8, str[1..], ']') orelse return MatcherError.MalformedClass;
+
+                return .{ .positive_group = try PositiveGroupClass.init(str[1 .. group_end + 1]) };
+            },
+            else => return .{ .literal = LiteralClass.init(str[0]) },
         }
 
-        return .{ .literal = LiteralClass.init(str[0]) };
+        return MatcherError.MalformedClass;
     }
 
     fn match(self: Class, char: u8) bool {
@@ -52,6 +74,38 @@ const WordClass = struct {
     }
 };
 
+const PositiveGroupClass = struct {
+    charset: std.bit_set.IntegerBitSet(256),
+
+    fn init(chars: []const u8) !PositiveGroupClass {
+        var charset = std.bit_set.IntegerBitSet(256).initEmpty();
+
+        for (chars) |char| {
+            charset.set(char);
+        }
+
+        return .{
+            .charset = charset,
+        };
+    }
+
+    fn match(self: PositiveGroupClass, char: u8) bool {
+        return self.charset.isSet(char);
+    }
+};
+
+test PositiveGroupClass {
+    var pg_class = try PositiveGroupClass.init("asdf");
+
+    try std.testing.expect(pg_class.match('a'));
+    try std.testing.expect(pg_class.match('s'));
+    try std.testing.expect(pg_class.match('d'));
+    try std.testing.expect(pg_class.match('f'));
+
+    try std.testing.expect(!pg_class.match('x'));
+    try std.testing.expect(!pg_class.match('z'));
+}
+
 test WordClass {
     var class = WordClass{};
     try std.testing.expect(class.match('R'));
@@ -82,9 +136,9 @@ test LiteralClass {
 
 pattern: Class,
 
-pub fn init(pattern: []const u8) Self {
+pub fn init(pattern: []const u8) !Self {
     return .{
-        .pattern = Class.getFromString(pattern),
+        .pattern = try Class.getFromString(pattern),
     };
 }
 
@@ -99,15 +153,20 @@ pub fn match(self: *Self, input: []const u8) bool {
 }
 
 test match {
-    var matcher_obj = Self.init("j");
+    var matcher_obj = try Self.init("j");
     try std.testing.expect(matcher_obj.match("fulljar"));
     try std.testing.expect(!matcher_obj.match("hello"));
 
-    matcher_obj = Self.init("\\d");
+    matcher_obj = try Self.init("\\d");
     try std.testing.expect(matcher_obj.match("full3jar"));
     try std.testing.expect(!matcher_obj.match("hello"));
 
-    matcher_obj = Self.init("\\w");
+    matcher_obj = try Self.init("\\w");
     try std.testing.expect(matcher_obj.match("---hello---"));
     try std.testing.expect(!matcher_obj.match("-+^^^$"));
+
+    matcher_obj = try Self.init("[abc]");
+    try std.testing.expect(matcher_obj.match("hello_ab_wordl"));
+    try std.testing.expect(matcher_obj.match("fcz"));
+    try std.testing.expect(!matcher_obj.match("hello"));
 }

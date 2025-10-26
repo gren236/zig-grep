@@ -15,7 +15,7 @@ pub fn main() !void {
     }
 
     const pattern = args[2];
-    var input_matcher = matcher.init(pattern);
+    var input_matcher = try matcher.init(pattern);
 
     var input_buffer: [128]u8 = undefined;
     var input_stdin_reader = std.fs.File.stdin().reader(&input_buffer);
